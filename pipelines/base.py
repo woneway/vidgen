@@ -13,6 +13,7 @@ class PipelineResult:
     title: str
     output_path: str
     tags: list[str] = field(default_factory=list)
+    description: str = ""
     # 各场景可扩展的元数据（股票 ticker、产品 URL 等）
     metadata: dict = field(default_factory=dict)
 

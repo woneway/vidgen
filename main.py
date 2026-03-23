@@ -12,11 +12,13 @@ from modules.providers import validate_api_key
 from pipelines.hot_topic import HotTopicPipeline
 
 
-async def _run(topic: str, output_dir: str = "./output"):
-    pipeline = HotTopicPipeline(output_dir=output_dir)
+async def _run(topic: str, output_dir: str = "./output", publish: bool = False):
+    pipeline = HotTopicPipeline(output_dir=output_dir, publish=publish)
     result = await pipeline.run(topic)
     print(f"\n话题: {result.topic}")
     print(f"视频: {result.output_path}")
+    if result.description:
+        print(f"文案: {result.description[:80]}...")
 
 
 async def _run_code_intro(
@@ -36,7 +38,7 @@ async def _run_code_intro(
     print(f"视频: {result.output_path}")
 
 
-async def _run_trending(output_dir: str = "./output"):
+async def _run_trending(output_dir: str = "./output", publish: bool = False):
     print("抓取热点中...")
     topics = await trending.get_hot_topics()
     if not topics:
@@ -47,7 +49,7 @@ async def _run_trending(output_dir: str = "./output"):
     for i, t in enumerate(topics[:5], 1):
         print(f"  {i}. {t}")
 
-    await _run(topics[0], output_dir)
+    await _run(topics[0], output_dir, publish=publish)
 
 
 def _extract_flag(args: list[str], flag: str) -> tuple[str | None, list[str]]:
@@ -78,6 +80,21 @@ if __name__ == "__main__":
 
     music_path, args = _extract_flag(args, "--music")
 
+    publish = "--publish" in args
+    if publish:
+        args = [a for a in args if a != "--publish"]
+
+    publish_file, args = _extract_flag(args, "--publish-file")
+    if publish_file:
+        async def _do_publish():
+            from modules import douyin_publisher
+            title = publish_file.split("/")[-1].replace("_final.mp4", "").replace("_", " ")
+            print(f"[发布] {publish_file}")
+            await douyin_publisher.publish(video_path=publish_file, title=title)
+            print("✅ 发布完成")
+        asyncio.run(_do_publish())
+        sys.exit(0)
+
     if pipeline_type == "code_intro":
         if not args:
             print("错误：code_intro pipeline 需要指定项目路径")
@@ -86,6 +103,6 @@ if __name__ == "__main__":
         project_path = args[0]
         asyncio.run(_run_code_intro(project_path, output_dir, num_scenes, music_path))
     elif args:
-        asyncio.run(_run(" ".join(args), output_dir))
+        asyncio.run(_run(" ".join(args), output_dir, publish=publish))
     else:
-        asyncio.run(_run_trending(output_dir))
+        asyncio.run(_run_trending(output_dir, publish=publish))

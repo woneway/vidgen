@@ -19,6 +19,10 @@ from modules import composer
 class HotTopicPipeline(BasePipeline):
     name = "hot_topic"
 
+    def __init__(self, output_dir: str | Path = "./output", publish: bool = False):
+        super().__init__(output_dir)
+        self.publish = publish
+
     async def run(self, topic: str) -> PipelineResult:
         output_dir = self._ensure_output_dir()
         safe = self._safe_name(topic)
@@ -60,12 +64,36 @@ class HotTopicPipeline(BasePipeline):
         print(f"   标题: {script['title']}")
         print(f"   标签: {' '.join('#' + t for t in script.get('tags', []))}")
 
-        return PipelineResult(
+        result = PipelineResult(
             topic=topic,
             title=script["title"],
             output_path=output_path,
             tags=script.get("tags", []),
+            description=script.get("description", ""),
         )
+
+        # 可选：自动发布到抖音
+        if self.publish:
+            await _publish_to_douyin(result)
+
+        return result
+
+
+async def _publish_to_douyin(result: PipelineResult) -> None:
+    from modules import douyin_publisher
+    print("\n[发布] 上传到抖音...")
+    try:
+        await douyin_publisher.publish(
+            video_path=result.output_path,
+            title=result.title,
+            tags=result.tags,
+            description=result.description,
+        )
+        print("  ✅ 抖音发布成功！")
+    except RuntimeError as exc:
+        print(f"  ⚠️  抖音发布失败: {exc}")
+    except Exception as exc:
+        print(f"  ⚠️  抖音发布异常: {exc}")
 
 
 async def _generate_tts(scenes: list[dict], output_dir: Path, safe: str) -> str:

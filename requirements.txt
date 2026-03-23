@@ -3,3 +3,5 @@ edge-tts>=6.1.0
 Pillow>=10.0.0
 python-dotenv>=1.0.0
 pygments>=2.17.0
+playwright>=1.40.0
+loguru>=0.7.0
