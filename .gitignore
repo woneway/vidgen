@@ -16,5 +16,11 @@ output/
 # macOS
 .DS_Store
 
+# Remotion
+remotion/node_modules/
+remotion/out/
+remotion/dist/
+remotion/public/assets/
+
 # Harness DB
 .harness/

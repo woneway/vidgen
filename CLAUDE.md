@@ -4,47 +4,94 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-**vidgen** is an async Python CLI that generates short vertical videos (1080×1920, TikTok/Douyin format) from trending topics or user-specified subjects. It uses MiniMax API for LLM script generation and AI image generation, Edge-TTS for free Chinese TTS, Pillow for subtitle overlay, and FFmpeg for video composition.
+**vidgen** is an async Python CLI that generates short vertical videos (1080x1920, TikTok/Douyin format). Two pipelines:
+
+1. **hot_topic** — auto-fetch trending topics, generate narrated video with AI images
+2. **code_intro** — analyze a code project, generate an intro/promo video with animated React scenes (Remotion)
+
+Uses MiniMax API for LLM + AI images, Edge-TTS for Chinese TTS, Remotion (React) for high-quality video rendering.
 
 ## Setup & Running
 
 ```bash
-# Dependencies
+# Python dependencies
 python3 -m venv venv && source venv/bin/activate
 pip install -r requirements.txt
-# System: ffmpeg and ffprobe must be installed (brew install ffmpeg on macOS)
+
+# Remotion dependencies (required for code_intro pipeline)
+cd remotion && npm install && cd ..
+
+# System: ffmpeg and ffprobe (brew install ffmpeg on macOS)
 
 # Environment
 cp .env.example .env
 # Set MINIMAX_API_KEY and optionally MINIMAX_API_HOST in .env
 
 # Run
-python main.py                    # Auto-fetch trending topic from Weibo/Baidu
-python main.py "Topic Name"       # Specific topic
-python main.py "Topic" --output ./custom_output
+python main.py                                          # Trending topic video
+python main.py "Topic Name"                             # Specific topic
+python main.py --pipeline code_intro /path/to/project   # Code intro video
+python main.py --pipeline code_intro /path --scenes 5   # Custom scene count
 ```
 
 ## Architecture
 
-The system is a 4-stage async pipeline in `pipelines/hot_topic.py`:
+### hot_topic pipeline (4-stage, Pillow+FFmpeg)
 
-1. **Script** (`modules/script.py`) → MiniMax chat API generates a 5-scene storyboard JSON `{title, tags, scenes[{image_prompt, narration}]}`
-2. **Content** (concurrent via `asyncio.gather`):
-   - Images (`modules/image.py`) → 5× MiniMax image generation (9:16 ratio); falls back to text cards (`modules/card.py`) on failure
-   - TTS (`modules/tts.py`) → Edge-TTS synthesizes all narrations concatenated into one MP3
-3. **Subtitles** (`modules/subtitle.py`) → Pillow burns narration text onto each image (white text, black stroke, semi-transparent bar)
-4. **Compose** (`modules/composer.py`) → FFmpeg assembles images with Ken Burns zoom effect + TTS audio into H.264/AAC MP4
+```
+[Script] → [Images + TTS] → [Subtitle overlay] → [FFmpeg compose] → MP4
+```
 
-**Key relationships:**
-- `main.py` → `HotTopicPipeline` (extends `pipelines/base.py`) → `modules/*`
-- `modules/providers.py` is the single MiniMax API wrapper (chat, image generation, file download)
-- All artifacts are named by topic slug: `_script.json`, `_img_N.jpg`, `_cap_N.jpg`, `_tts.mp3`, `_final.mp4`
-- `pipeline.py` (root) is a legacy monolithic implementation; prefer the `pipelines/` + `modules/` structure
+### code_intro pipeline (5-stage, Remotion)
+
+```
+[Code analysis] → [Competitor research] → [Script generation]
+  → [AI images + TTS] → [Remotion render] → MP4
+```
+
+Remotion renders all visual scenes as React components:
+- `TitleScene` — spring bounce-in + tech stack tags
+- `AIImageScene` — Ken Burns zoom + gradient mask
+- `CodeScene` — terminal window + syntax highlight + line-by-line reveal
+- `DataScene` — 2x2 metrics grid + count-up animation
+- `ArchScene` — directory tree with typewriter effect
+- `EndingScene` — CTA pulse animation
+- Scene transitions: fade (20 frames)
+- Subtitles: per-line spring entrance animation
+
+### Key files
+
+```
+main.py                         CLI entry point
+pipelines/
+  base.py                       Abstract BasePipeline
+  hot_topic.py                  Trending topic → Pillow+FFmpeg
+  code_intro.py                 Code project → Remotion
+modules/
+  providers.py                  MiniMax API wrapper (chat, image)
+  script.py                     LLM script generation + validation
+  code_analyzer.py              Project introspection (LOC, deps, structure)
+  competitor.py                 Competitor research via LLM
+  remotion_render.py            Python→Remotion bridge (props.json + CLI)
+  image.py / tts.py             AI image gen / Edge-TTS
+  composer.py                   FFmpeg video composition
+  subtitle.py / visual_cards.py Pillow-based rendering (hot_topic)
+remotion/
+  src/index.ts                  Remotion entry point
+  src/Root.tsx                  Composition registration + calculateMetadata
+  src/CodeIntro.tsx             Main composition (TransitionSeries + Audio)
+  src/types.ts                  Zod schemas for props
+  src/theme.ts                  Colors, fonts, sizes
+  src/scenes/*.tsx              6 scene components
+  src/components/*.tsx          Background, Subtitle, SceneTransition
+```
 
 ## Key Technical Details
 
-- **Async-first:** All stages use `asyncio`; blocking Pillow operations run via `loop.run_in_executor()`
-- **Fallback chain:** Image generation failure → `card.py` generates gradient text card via FFmpeg
-- **Video format:** 1080×1920 @ 25fps, each scene duration = `total_audio / num_scenes`, Ken Burns zoom capped at 1.05×
-- **Chinese fonts:** On macOS uses STHeiti/Songti; Linux requires Noto Sans CJK SC
+- **Async-first:** All stages use `asyncio`; blocking ops in `run_in_executor()`
+- **Remotion rendering:** Python writes `props.json` (camelCase), copies assets to `remotion/public/assets/`, calls `npx remotion render`; assets cleaned up after render
+- **Asset serving:** Remotion serves files from `public/` via `staticFile()`. Audio/images are staged there temporarily.
+- **Dynamic duration:** `calculateMetadata` in Root.tsx sets video length from `audioDuration` prop
+- **Video format:** 1080x1920 @ 25fps, H.264/AAC
+- **Chinese fonts:** Uses system fonts (PingFang SC on macOS, Noto Sans CJK on Linux)
 - **No tests exist** in the codebase currently

@@ -41,7 +41,7 @@ async def images_to_video(
 
     inputs = []
     for p in image_paths:
-        inputs += ["-loop", "1", "-t", str(per_image), "-i", p]
+        inputs += ["-i", p]
 
     filter_parts = []
     for i in range(n):

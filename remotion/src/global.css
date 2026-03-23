@@ -1,0 +1,6 @@
+/* Use system fonts — works offline in headless Chrome */
+* {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
